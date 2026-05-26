@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bài 11: Thực hành đo gia tốc rơi tự do</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script>
+        window.MathJax = {
+            startup: { typeset: false },
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            },
+            chtml: { fontURL: 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/output/chtml/fonts/woff-v2' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        [v-cloak] { display: none; }
+
+        html, body {
+            min-height: 100%;
+        }
+
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #f1f5f9;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .fade-enter-active,
+        .fade-leave-active {
+            transition: opacity 0.22s ease, transform 0.22s ease;
+        }
+
+        .fade-enter-from,
+        .fade-leave-to {
+            opacity: 0;
+            transform: translate(-50%, -12px);
+        }
+
+        /* Lớp chuẩn hóa văn bản đọc */
+        .readable {
+            line-height: 1.75;
+            text-wrap: pretty;
+            overflow-wrap: break-word;
+            word-break: normal;
+        }
+
+        .compact-readable {
+            line-height: 1.55;
+            text-wrap: pretty;
+            overflow-wrap: break-word;
+            word-break: normal;
+        }
+
+        .text-card {
+            border-radius: 1rem;
+            border: 1px solid #e2e8f0;
+            background: #ffffff;
+            padding: 1.25rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+        }
+
+        .note-card {
+            border-radius: 1rem;
+            padding: 1.25rem;
+            line-height: 1.7;
+            text-wrap: pretty;
+        }
+
+        /* Khung công thức chống vỡ layout mobile - Không tác động đến công thức inline */
+        .formula-box {
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+            border-radius: 0.85rem;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            padding: 1rem 0.75rem;
+            text-align: center;
+        }
+
+        /* Cấu trúc nút đáp án an toàn chống lỗi Grid trên thẻ button */
+        .answer-option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            border-radius: 0.9rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .answer-flex {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+            width: 100%;
+        }
+
+        .answer-letter {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.25rem;
+            height: 2.25rem;
+            border-radius: 9999px;
+            font-weight: 900;
+            transition: all 0.2s ease;
+        }
+
+        @keyframes crashShake {
+            0% { transform: translateX(0); }
+            20% { transform: translateX(-6px) rotate(-1deg); }
+            40% { transform: translateX(6px) rotate(1deg); }
+            60% { transform: translateX(-5px) rotate(-1deg); }
+            80% { transform: translateX(5px) rotate(1deg); }
+            100% { transform: translateX(0); }
+        }
+
+        .animate-crash {
+            animation: crashShake 0.45s ease-in-out;
+        }
+
+        @keyframes pingSoft {
+            0%, 100% { opacity: 0.35; }
+            50% { opacity: 1; }
+        }
+
+        .beam-active {
+            animation: pingSoft 0.85s ease-in-out infinite;
+        }
+
+        @keyframes highlightStep {
+            0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.65); }
+            100% { box-shadow: 0 0 0 12px rgba(234, 179, 8, 0); }
+        }
+
+        .report-highlight {
+            animation: highlightStep 1.2s ease-out infinite;
+        }
+    </style>
+</head>
+
+<body class="text-slate-800">
+    <div id="app" v-cloak class="mx-auto flex min-h-screen max-w-6xl flex-col p-4 relative">
+        <transition name="fade">
+            <div v-if="toast.show"
+                 class="fixed top-20 left-1/2 z-50 max-w-[92%] -translate-x-1/2 rounded-xl px-5 py-3 text-center text-sm font-bold text-white shadow-2xl"
+                 :class="toast.isError ? 'bg-red-600' : 'bg-teal-700'">
+                <span v-html="toast.message"></span>
+            </div>
+        </transition>
+
+        <header class="flex-shrink-0 rounded-t-2xl bg-teal-900 p-4 text-white shadow-md">
+            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div class="min-w-0">
+                    <h1 class="readable text-xl font-black uppercase tracking-tight">
+                        Vật lí 10 - Bài 11: Thực hành đo gia tốc rơi tự do
+                    </h1>
+                    <p class="readable mt-1 text-sm text-teal-100">
+                        Thiết kế phương án, cân chỉnh thiết bị, xử lí sai số và bảo vệ báo cáo thực hành.
+                    </p>
+                </div>
+
+                <div class="w-fit rounded-full bg-teal-800 px-3 py-1 text-xs font-bold text-teal-100">
+                    Vai trò: Kỹ sư trưởng phòng Lab
+                </div>
+            </div>
+        </header>
+
+        <nav class="mb-4 flex flex-shrink-0 overflow-x-auto rounded-b-2xl bg-white shadow-md no-scrollbar">
+            <button v-for="(tab, index) in tabs"
+                    :key="tab"
+                    @click="changeTab(index + 1)"
+                    class="min-w-[180px] flex-1 border-b-4 px-4 py-3 text-center text-sm font-bold transition"
+                    :class="activeTab === index + 1 ? 'border-teal-700 bg-teal-50 text-teal-800' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-teal-700'">
+                {{ tab }}
+            </button>
+        </nav>
+
+        <main class="relative flex-1 overflow-y-auto rounded-2xl bg-white p-5 shadow-md no-scrollbar">
+            
+            <section v-show="activeTab === 1" class="min-h-full">
+                <div class="mb-5 border-b pb-4">
+                    <h2 class="readable text-lg font-black text-teal-900">
+                        Tab 1. Đánh giá phương án: Vì sao không đo bằng đồng hồ bấm tay?
+                    </h2>
+
+                    <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div class="note-card bg-slate-50 text-sm text-slate-700 md:col-span-2">
+                            <p class="readable">
+                                Khoảng cách rơi trong mô phỏng là $s = 0{,}500\,m$. Thời gian rơi thật chỉ khoảng $0{,}319\,s$.
+                            </p>
+                            <p class="readable mt-2">
+                                Trong khi đó, phản xạ tay người thường chậm hơn rất nhiều so với yêu cầu đo chính xác. Vì vậy, nếu dùng đồng hồ bấm tay, kết quả $g$ dễ bị sai lớn.
+                            </p>
+                        </div>
+
+                        <div class="note-card bg-amber-50 text-sm text-amber-900">
+                            <p class="font-black">Mục tiêu học tập</p>
+                            <p class="readable mt-1">
+                                Tự chứng minh rằng phương án đo thủ công không phù hợp cho thí nghiệm rơi tự do trong phòng Lab.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div class="rounded-2xl border-2 border-rose-200 bg-rose-50 p-5 shadow-sm flex flex-col">
+                        <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <h3 class="compact-readable text-sm font-black uppercase tracking-wide text-rose-800">
+                                Phương án 1: Mắt nhìn - tay bấm
+                            </h3>
+                            <span class="w-fit rounded-full bg-rose-100 px-3 py-1 text-[10px] font-bold text-rose-700">
+                                Dễ sai vì phản xạ
+                            </span>
+                        </div>
+
+                        <div class="relative mx-auto h-56 w-full max-w-sm overflow-hidden rounded-2xl bg-slate-950 shadow-inner flex-shrink-0">
+                            <div class="absolute left-1/2 top-4 h-48 w-px -translate-x-1/2 bg-slate-500/50"></div>
+                            <div class="absolute left-0 right-0 top-[154px] h-1 bg-rose-500"></div>
+                            <div class="absolute right-2 top-[145px] rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                                vạch đích
+                            </div>
+
+                            <div class="absolute left-1/2 h-5 w-5 -translate-x-1/2 rounded-full bg-slate-100 shadow-lg ring-2 ring-white/60"
+                                 :style="{ top: manualBallY + 'px' }"></div>
+
+                            <div v-if="manualHitLine && manualRunning"
+                                 class="absolute inset-x-4 bottom-5 rounded-lg bg-rose-600/90 p-2 text-center text-xs font-bold text-white">
+                                Bi đã chạm vạch. Nếu chưa bấm, thời gian vẫn đang tăng.
+                            </div>
+                        </div>
+
+                        <div class="mt-5 grid grid-cols-2 gap-3 flex-shrink-0">
+                            <button @click="startManualDrop"
+                                    :disabled="manualRunning"
+                                    class="rounded-xl bg-slate-800 px-3 py-3 text-xs font-black text-white shadow hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50">
+                                1. THẢ BI
+                            </button>
+                            <button @click="stopManualDrop"
+                                    :disabled="!manualRunning"
+                                    class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-black text-white shadow hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">
+                                2. BẤM DỪNG
+                            </button>
+                        </div>
+
+                        <div class="mt-5 flex-1 rounded-xl border bg-white p-4 text-center flex flex-col justify-center">
+                            <p class="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                                Kết quả người đo tự bấm
+                            </p>
+
+                            <div v-if="manualFinished">
+                                <p class="font-mono text-xl font-black text-rose-700">
+                                    t = {{ manualTime.toFixed(3) }} s
+                                </p>
+                                <p class="font-mono text-xl font-black text-rose-900 mt-1">
+                                    g = {{ manualG.toFixed(2) }} m/s²
+                                </p>
+                                <p class="readable mt-3 text-sm font-semibold text-rose-700 bg-rose-50 p-2 rounded">
+                                    {{ manualComment }}
+                                </p>
+                            </div>
+
+                            <div v-else class="py-5 text-sm font-mono text-slate-400">
+                                Đang chờ thao tác...
+                            </div>
+                        </div>
+
+                        <button v-if="manualFinished"
+                                @click="resetManual"
+                                class="mt-4 w-full rounded-xl border border-rose-200 bg-white px-3 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 flex-shrink-0">
+                            Đo thủ công lại
+                        </button>
+                    </div>
+
+                    <div class="rounded-2xl border-2 border-teal-200 bg-teal-50 p-5 shadow-sm flex flex-col">
+                        <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <h3 class="compact-readable text-sm font-black uppercase tracking-wide text-teal-800">
+                                Phương án 2: Nam châm điện + cổng quang
+                            </h3>
+                            <span class="w-fit rounded-full bg-teal-100 px-3 py-1 text-[10px] font-bold text-teal-700">
+                                Tự động hóa phép đo
+                            </span>
+                        </div>
+
+                        <div class="relative mx-auto h-56 w-full max-w-sm overflow-hidden rounded-2xl bg-slate-950 shadow-inner flex-shrink-0">
+                            <div class="absolute left-0 right-0 top-8 h-1 bg-sky-400/60" :class="autoRunning ? 'beam-active' : ''"></div>
+                            <div class="absolute left-0 right-0 top-[154px] h-1 bg-sky-400/60" :class="autoRunning ? 'beam-active' : ''"></div>
+                            <div class="absolute left-2 top-5 rounded bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white">E1</div>
+                            <div class="absolute left-2 top-[145px] rounded bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white">E2</div>
+
+                            <div class="absolute left-1/2 h-5 w-5 -translate-x-1/2 rounded-full bg-slate-100 shadow-lg ring-2 ring-white/60"
+                                 :style="{ top: autoBallY + 'px' }"></div>
+
+                            <div v-if="autoFinished"
+                                 class="absolute inset-x-4 bottom-5 rounded-lg bg-teal-700/90 p-2 text-center text-xs font-bold text-white">
+                                Đồng hồ ghi thời gian tự động tới 0,001 s.
+                            </div>
+                        </div>
+
+                        <div class="mt-5 flex-shrink-0">
+                            <button @click="startAutoDrop"
+                                    :disabled="autoRunning"
+                                    class="w-full rounded-xl bg-teal-700 px-3 py-3 text-xs font-black text-white shadow hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">
+                                KÍCH HOẠT HỆ THỐNG TỰ ĐỘNG MC963
+                            </button>
+                        </div>
+
+                        <div class="mt-5 flex-1 rounded-xl border bg-white p-4 text-center flex flex-col justify-center">
+                            <p class="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                                Kết quả máy đo tự động
+                            </p>
+
+                            <div v-if="autoFinished">
+                                <p class="font-mono text-xl font-black text-teal-700">
+                                    t = 0.319 s
+                                </p>
+                                <p class="font-mono text-xl font-black text-teal-900 mt-1">
+                                    g = 9.83 m/s²
+                                </p>
+                                <p class="readable mt-3 text-sm font-semibold text-teal-700 bg-teal-50 p-2 rounded">
+                                    Phương án này loại bỏ hoàn toàn sai số phản xạ sinh học của người bấm.
+                                </p>
+                            </div>
+
+                            <div v-else class="py-5 text-sm font-mono text-slate-400">
+                                Đang chờ kích hoạt...
+                            </div>
+                        </div>
+
+                        <button v-if="autoFinished"
+                                @click="resetAuto"
+                                class="mt-4 w-full rounded-xl border border-teal-200 bg-white px-3 py-3 text-sm font-bold text-teal-700 hover:bg-teal-50 flex-shrink-0">
+                            Chạy tự động lại
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="manualFinished || autoFinished"
+                     class="note-card mt-6 border-l-8 border-teal-700 bg-teal-50 text-sm text-teal-950 shadow-sm">
+                    <p class="font-black text-base">Kết luận sư phạm</p>
+                    <p class="readable mt-2">
+                        Đo thủ công là phương án không phù hợp vì thời gian rơi quá ngắn. Phương án chuẩn xác của bài thực hành là dùng nam châm điện để bảo đảm $v_0 = 0$, đồng thời dùng cổng quang điện để tự động đo thời gian.
+                    </p>
+                </div>
+            </section>
+
+            <section v-show="activeTab === 2" class="min-h-full">
+                <div class="mb-5 border-b pb-4">
+                    <h2 class="readable text-lg font-black text-teal-900">
+                        Tab 2. Sổ tay kỹ sư thực hành
+                    </h2>
+                    <p class="readable mt-2 text-sm italic text-slate-600">
+                        Nội dung được chia thành các khối ngắn để học sinh dễ đọc, hiểu rõ nguyên lý và tránh sai sót khi thao tác.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div class="space-y-5">
+                        <article class="text-card readable text-sm">
+                            <h3 class="mb-3 font-black text-slate-900 text-base text-teal-800">1. Điều kiện thả không vận tốc đầu</h3>
+                            <p>
+                                Viên bi phải được giữ bằng <strong>nam châm điện</strong> và được thả bằng công tắc ngắt điện.
+                            </p>
+                            <p class="mt-2 text-slate-600">
+                                Nếu dùng tay thả, tay có thể vô tình tạo lực đẩy hoặc lực kéo rất nhỏ. Khi đó, viên bi không còn bắt đầu rơi với điều kiện $v_0 = 0$, làm sai lệch hoàn toàn công thức.
+                            </p>
+                        </article>
+
+                        <article class="text-card readable text-sm">
+                            <h3 class="mb-3 font-black text-slate-900 text-base text-teal-800">2. Quỹ đạo phải thẳng đứng</h3>
+                            <p>
+                                Giá đỡ cần được cân chỉnh vuông góc với mặt đất bằng <strong>dây dọi</strong>.
+                            </p>
+                            <p class="mt-2 text-slate-600">
+                                Khi trục giá không song song với dây dọi, viên bi có thể rơi lệch khỏi tia hồng ngoại hoặc cọ sát vào khe chữ U của cổng quang, sinh ra ma sát. Đây là lỗi thực hành rất thường gặp.
+                            </p>
+                        </article>
+
+                        <article class="note-card border-l-8 border-teal-700 bg-teal-50 text-sm text-teal-950 shadow-sm">
+                            <h3 class="mb-3 font-black text-base">3. Công thức xử lí sai số báo cáo</h3>
+                            <p class="readable">
+                                Từ công thức tính gia tốc rơi tự do cơ bản:
+                            </p>
+
+                            <div class="formula-box my-3">
+                                $$g = \frac{2s}{t^2}$$
+                            </div>
+
+                            <p class="readable">
+                                Sai số tương đối của phép đo gián tiếp được viết:
+                            </p>
+
+                            <div class="formula-box my-3 bg-white">
+                                $$\frac{\Delta g}{\bar{g}} = \frac{\Delta s}{\bar{s}} + 2\frac{\Delta t}{\bar{t}}$$
+                            </div>
+
+                            <p class="readable font-semibold text-red-700 bg-red-50 p-3 rounded-lg border border-red-200">
+                                LƯU Ý: Hệ số 2 xuất hiện trước $\dfrac{\Delta t}{\bar{t}}$ cho thấy sai số thời gian ảnh hưởng cực kì mạnh đến kết quả $g$ (do thời gian mang số mũ bậc 2).
+                            </p>
+                        </article>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p class="readable mb-4 text-center text-sm font-black uppercase tracking-wider text-slate-500">
+                            Trực quan hóa thao tác cân chỉnh bằng quả dọi
+                        </p>
+
+                        <svg viewBox="0 0 420 300" class="h-auto w-full rounded-xl bg-slate-50 border border-slate-200">
+                            <defs>
+                                <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                                    <path d="M0,0 L8,4 L0,8 Z" fill="#0f766e"></path>
+                                </marker>
+                            </defs>
+
+                            <rect x="70" y="250" width="135" height="18" rx="4" fill="#475569"></rect>
+                            
+                            <rect x="122" y="38" width="14" height="215" rx="5" fill="#94a3b8" stroke="#64748b" stroke-width="2"></rect>
+                            <line x1="129" y1="38" x2="129" y2="253" stroke="#0f766e" stroke-width="2" stroke-dasharray="5 5"></line>
+                            <text x="145" y="68" font-size="13" font-weight="700" fill="#0f766e">Trục giá đỡ</text>
+
+                            <line x1="260" y1="38" x2="260" y2="238" stroke="#f59e0b" stroke-width="2"></line>
+                            <circle cx="260" cy="38" r="4" fill="#f59e0b"></circle>
+                            <polygon points="260,238 246,266 274,266" fill="#ef4444" stroke="#991b1b" stroke-width="2"></polygon>
+                            <line x1="260" y1="38" x2="260" y2="266" stroke="#0f766e" stroke-width="2" stroke-dasharray="5 5"></line>
+                            <text x="278" y="130" font-size="13" font-weight="700" fill="#b45309">Dây dọi thẳng đứng</text>
+
+                            <rect x="98" y="128" width="72" height="20" rx="4" fill="#2563eb"></rect>
+                            <path d="M170 128 Q215 138 170 148" fill="none" stroke="#2563eb" stroke-width="7" stroke-linecap="round"></path>
+                            <line x1="170" y1="138" x2="214" y2="138" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5 4"></line>
+                            <text x="215" y="145" font-size="12" font-weight="700" fill="#1d4ed8">Tia hồng ngoại</text>
+
+                            <circle cx="129" cy="92" r="11" fill="#e2e8f0" stroke="#64748b" stroke-width="2"></circle>
+                            <line x1="129" y1="104" x2="129" y2="138" stroke="#64748b" stroke-dasharray="3 3"></line>
+
+                            <path d="M129 40 C175 58 213 70 260 40" fill="none" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)"></path>
+                            <text x="142" y="28" font-size="13" font-weight="800" fill="#0f766e">Hai đường phải song song</text>
+                        </svg>
+
+                        <div class="note-card mt-5 bg-slate-100 text-sm text-slate-800 border border-slate-200">
+                            <p class="font-black text-slate-900 uppercase">Ghi nhớ thao tác</p>
+                            <p class="readable mt-2">
+                                Trục inox của giá đỡ cần song song tuyệt đối với dây dọi. Khi đó, viên bi mới có khả năng rơi xuyên qua ngay giữa khe chữ U của cổng quang điện mà không chạm vách.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section v-show="activeTab === 3" class="min-h-full">
+                <div class="mb-5 border-b pb-4">
+                    <h2 class="readable text-lg font-black text-teal-900">
+                        Tab 3. Xưởng thực hành: Khắc phục sự cố và lập báo cáo
+                    </h2>
+
+                    <div class="note-card mt-3 bg-slate-50 text-sm text-slate-700">
+                        <p class="readable">
+                            Học sinh có thể thử bấm "Thả bi" khi giá đỡ còn đang nghiêng để tận mắt thấy lỗi va chạm. Sau đó, hãy kéo thanh trượt cân chỉnh góc về $0^\circ$ và thực hiện đo đủ 3 lần để hệ thống tự động lập báo cáo.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                    <div class="rounded-2xl border bg-slate-50 p-5 shadow-sm xl:col-span-1 flex flex-col gap-4">
+                        
+                        <div class="rounded-xl border bg-white p-4 shadow-sm">
+                            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <label class="compact-readable text-sm font-black uppercase tracking-wide text-slate-800">
+                                    Bước 1: Cân chỉnh giá
+                                </label>
+                                <span class="w-fit rounded-full px-3 py-1 text-xs font-black"
+                                      :class="poleAngle === 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                                    Góc lệch: {{ poleAngle }}°
+                                </span>
+                            </div>
+
+                            <input type="range"
+                                   v-model.number="poleAngle"
+                                   min="-10"
+                                   max="10"
+                                   step="1"
+                                   class="w-full accent-teal-700 cursor-pointer"
+                                   :disabled="isDropping || simState === 'done'" />
+
+                            <div class="mt-2 flex justify-between text-xs font-bold text-slate-400">
+                                <span>-10°</span>
+                                <span :class="poleAngle === 0 ? 'text-green-600' : ''">0°</span>
+                                <span>+10°</span>
+                            </div>
+
+                            <button @click="confirmCalibration"
+                                    :disabled="poleAngle !== 0 || isDropping || simState !== 'calibrating'"
+                                    class="mt-4 w-full rounded-xl bg-green-600 px-4 py-3 text-xs font-black text-white shadow hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40 transition-colors">
+                                XÁC NHẬN ĐÃ CÂN BẰNG
+                            </button>
+                        </div>
+
+                        <div class="rounded-xl border bg-white p-4 shadow-sm">
+                            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <label class="compact-readable text-sm font-black uppercase tracking-wide text-slate-800">
+                                    Bước 2: Đo đạc
+                                </label>
+                                <span class="w-fit rounded-full bg-teal-100 px-3 py-1 text-xs font-black text-teal-800">
+                                    {{ measurementCount }}/3 lần
+                                </span>
+                            </div>
+
+                            <div class="formula-box mb-4 text-base font-bold text-slate-800 bg-slate-50 border-slate-200">
+                                Khoảng cách: $s = 0{,}500\,m$
+                            </div>
+
+                            <button @click="dropSimBall"
+                                    :disabled="isDropping || measurementCount >= 3"
+                                    class="w-full rounded-xl bg-teal-800 px-4 py-3 text-sm font-black text-white shadow hover:bg-teal-900 disabled:cursor-not-allowed disabled:opacity-40 transition-colors">
+                                ☄️ BẤM CÔNG TẮC THẢ BI
+                            </button>
+
+                            <p class="readable mt-3 text-xs font-medium text-slate-500 italic text-center">
+                                Thử bấm khi giá còn nghiêng để xem sự cố.
+                            </p>
+                        </div>
+
+                        <div class="flex-1 mt-2 rounded-2xl border-2 border-slate-200 bg-slate-950 p-2 shadow-inner relative overflow-hidden min-h-[350px]"
+                             :class="ballCrash ? 'animate-crash border-red-500' : ''">
+                            <svg viewBox="0 0 260 330" class="h-full w-full absolute inset-0">
+                                <line x1="130" y1="18" x2="130" y2="300" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5 5"></line>
+                                <text x="140" y="292" font-size="11" font-weight="700" fill="#f59e0b">Dây dọi</text>
+
+                                <g :style="`transform: rotate(${poleAngle}deg); transform-origin: 130px 35px; transition: transform 0.2s ease;`">
+                                    <rect x="124" y="35" width="12" height="245" rx="5" fill="#94a3b8" stroke="#cbd5e1" stroke-width="1"></rect>
+                                    <rect x="100" y="185" width="60" height="16" rx="3" fill="#2563eb"></rect>
+                                    <path d="M160 185 Q205 193 160 201" fill="none" stroke="#2563eb" stroke-width="8" stroke-linecap="round"></path>
+                                    <line x1="160" y1="193" x2="203" y2="193" stroke="#38bdf8" stroke-width="2" :class="isDropping ? 'beam-active' : ''"></line>
+                                    <text x="68" y="178" font-size="10" font-weight="700" fill="#bfdbfe">Cổng quang</text>
+                                </g>
+
+                                <circle :cx="simBallX" :cy="simBallY" r="9" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"></circle>
+                                <line x1="130" y1="54" x2="130" y2="193" stroke="#64748b" stroke-width="1" stroke-dasharray="3 4"></line>
+
+                                <rect x="82" y="294" width="96" height="14" rx="4" fill="#334155"></rect>
+                                <text x="90" y="324" font-size="10" font-weight="700" fill="#94a3b8">Đệm hãm bảo vệ</text>
+                            </svg>
+
+                            <div v-if="ballCrash"
+                                 class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] rounded-xl bg-red-700/95 p-4 text-center text-sm font-black leading-relaxed text-white shadow-xl z-10 border border-red-400">
+                                💥 SỰ CỐ!<br><br>
+                                Bi đâm vào thành cổng quang.<br>
+                                Hãy cân chỉnh giá đỡ về 0°.
+                            </div>
+                        </div>
+
+                        <button @click="resetSimulation"
+                                class="w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0">
+                            Làm lại toàn bộ thí nghiệm
+                        </button>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-300 bg-white p-5 sm:p-6 shadow-sm xl:col-span-2 flex flex-col">
+                        <div class="mb-5 flex flex-col gap-3 border-b pb-4 md:flex-row md:items-start md:justify-between">
+                            <div class="min-w-0">
+                                <h3 class="readable text-xl font-black text-slate-900 uppercase">
+                                    Báo cáo kết quả thực hành
+                                </h3>
+                                <p class="readable mt-2 text-sm italic text-slate-500">
+                                    Hệ thống sẽ tự động xử lí và điền số liệu sau khi hoàn tất 3 lần đo hợp lệ.
+                                </p>
+                            </div>
+
+                            <div class="w-fit rounded-lg border-2 border-rose-200 bg-rose-50 px-4 py-2 text-center text-xs font-black uppercase tracking-wider text-rose-600">
+                                Tờ nháp Lab
+                            </div>
+                        </div>
+
+                        <div class="space-y-6 text-sm text-slate-800 flex-1">
+                            <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <p class="readable mb-3 font-black text-base text-slate-800">1. Bảng số liệu thô</p>
+
+                                <div class="overflow-x-auto rounded-lg border border-slate-300">
+                                    <table class="w-full min-w-[460px] border-collapse bg-white text-center text-base">
+                                        <thead>
+                                            <tr class="bg-slate-200 text-slate-800">
+                                                <th class="border border-slate-300 p-3">Đại lượng</th>
+                                                <th class="border border-slate-300 p-3">Lần 1</th>
+                                                <th class="border border-slate-300 p-3">Lần 2</th>
+                                                <th class="border border-slate-300 p-3">Lần 3</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td class="border border-slate-300 p-3 font-bold bg-slate-50">$s\,(m)$</td>
+                                                <td class="border border-slate-300 p-3 font-mono text-slate-600">0.500</td>
+                                                <td class="border border-slate-300 p-3 font-mono text-slate-600">0.500</td>
+                                                <td class="border border-slate-300 p-3 font-mono text-slate-600">0.500</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="border border-slate-300 p-3 font-bold bg-slate-50">$t\,(s)$</td>
+                                                <td class="border border-slate-300 p-3 font-mono font-bold text-teal-700 text-lg">{{ displayMeasurement(0) }}</td>
+                                                <td class="border border-slate-300 p-3 font-mono font-bold text-teal-700 text-lg">{{ displayMeasurement(1) }}</td>
+                                                <td class="border border-slate-300 p-3 font-mono font-bold text-teal-700 text-lg">{{ displayMeasurement(2) }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+
+                            <section v-if="measurementCount < 3"
+                                     class="note-card border-2 border-dashed border-slate-300 bg-slate-50/50 text-center text-base font-bold text-slate-400 py-10">
+                                Chưa đủ dữ liệu.<br> Cần thực hiện đủ 3 lần đo hợp lệ để mở khóa phần tính toán.
+                            </section>
+
+                            <section v-if="measurementCount === 3"
+                                     class="note-card border border-amber-200 bg-amber-50/50 text-base"
+                                     :class="reportStep === 1 ? 'report-highlight' : ''">
+                                <p class="mb-4 font-black text-amber-900">2. Xử lí dữ liệu thời gian</p>
+
+                                <div class="space-y-4">
+                                    <div>
+                                        <p class="font-semibold text-slate-700 mb-2">Thời gian rơi trung bình:</p>
+                                        <div class="formula-box bg-white">
+                                            $$\bar{t} = \frac{t_1 + t_2 + t_3}{3}
+                                            = \frac{0.318 + 0.321 + 0.318}{3}
+                                            = \mathbf{ {{ tAvgText }}\,s }$$
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-slate-700 mb-2">Sai số ngẫu nhiên cực đại:</p>
+                                        <div class="formula-box bg-white">
+                                            $$\Delta t_{\text{ngẫu nhiên}} = \max{|t_i - \bar{t}|}
+                                            = \mathbf{ {{ randomErrorText }}\,s }$$
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-slate-700 mb-2">Sai số tuyệt đối của thời gian (cộng thêm sai số đồng hồ 0.001s):</p>
+                                        <div class="formula-box bg-white">
+                                            $$\Delta t = \Delta t_{\text{ngẫu nhiên}} + \Delta t_{\text{dc}}
+                                            = \mathbf{ {{ deltaTText }}\,s }$$
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section v-if="measurementCount === 3"
+                                     class="note-card border border-blue-200 bg-blue-50/50 text-base"
+                                     :class="reportStep === 2 ? 'report-highlight' : ''">
+                                <p class="mb-4 font-black text-blue-900">3. Tính gia tốc trọng trường trung bình</p>
+                                <div class="formula-box bg-white">
+                                    $$\bar{g} = \frac{2\bar{s}}{\bar{t}^2}
+                                    = \frac{2 \cdot 0.500}{({{ tAvgText }})^2}
+                                    = \mathbf{ {{ gAvgText }}\,m/s^2 }$$
+                                </div>
+                            </section>
+
+                            <section v-if="measurementCount === 3"
+                                     class="note-card border border-indigo-200 bg-indigo-50/50 text-base"
+                                     :class="reportStep === 3 ? 'report-highlight' : ''">
+                                <p class="mb-4 font-black text-indigo-900">4. Tính sai số tuyệt đối của $g$</p>
+
+                                <div class="formula-box bg-white mb-3">
+                                    $$\Delta g = \bar{g}\left(\frac{\Delta s}{\bar{s}} + 2\frac{\Delta t}{\bar{t}}\right)$$
+                                </div>
+
+                                <div class="formula-box bg-white">
+                                    $$\Delta g = {{ gAvgText }}\left(\frac{0.001}{0.500} + 2\frac{ {{ deltaTText }} }{ {{ tAvgText }} }\right)
+                                    = \mathbf{ {{ deltaGText }}\,m/s^2 }$$
+                                </div>
+                            </section>
+
+                            <section v-if="measurementCount === 3"
+                                     class="rounded-2xl border-4 border-rose-500 bg-white p-6 text-center shadow-lg"
+                                     :class="reportStep === 4 ? 'report-highlight' : ''">
+                                <p class="readable text-sm font-black uppercase tracking-widest text-rose-500 mb-3">
+                                    KẾT QUẢ CUỐI CÙNG GHI VÀO BÁO CÁO
+                                </p>
+                                <div class="formula-box border-rose-200 bg-rose-50 text-3xl font-black text-rose-700 py-4">
+                                    $$g = {{ gAvgText }} \pm {{ deltaGText }}\,m/s^2$$
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section v-show="activeTab === 4" class="min-h-full">
+                <div class="mb-6 flex flex-col gap-4 border-b pb-5 md:flex-row md:items-start md:justify-between">
+                    <div class="min-w-0">
+                        <h2 class="readable text-lg font-black text-teal-900 uppercase">
+                            Tab 4. Bảo vệ báo cáo thực hành
+                        </h2>
+                        <p class="readable mt-2 text-sm text-slate-600">
+                            Hãy vận dụng các kiến thức đã quan sát trong quá trình thực hành để phản biện và bảo vệ phương án đo.
+                        </p>
+                    </div>
+
+                    <button @click="resetQuiz"
+                            class="w-fit flex-shrink-0 rounded-xl border-2 border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-black text-teal-800 hover:bg-teal-100 transition-colors">
+                        Làm lại trắc nghiệm
+                    </button>
+                </div>
+
+                <div class="space-y-6">
+                    <article v-for="(q, qIndex) in questions"
+                             :key="q.id"
+                             class="rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:p-6 shadow-sm">
+                        
+                        <div class="mb-5 rounded-xl bg-white p-4 shadow-sm border border-slate-100">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="bg-slate-800 text-white px-3 py-1 rounded-lg text-xs font-black tracking-wider">CÂU {{ qIndex + 1 }}</span>
+                            </div>
+                            <p class="readable mt-2 text-base font-bold text-slate-900" v-html="q.text"></p>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3">
+                            <div v-for="(opt, oIndex) in q.options"
+                                 :key="oIndex"
+                                 @click="selectOption(q.id, oIndex)"
+                                 class="answer-option border-2"
+                                 :class="getOptionClass(q, oIndex)">
+                                <div class="answer-flex">
+                                    <span class="answer-letter" :class="getLetterClass(q, oIndex)">
+                                        {{ String.fromCharCode(65 + oIndex) }}
+                                    </span>
+                                    <div class="flex-1 min-w-0 readable text-base pt-0.5 text-slate-800 font-medium" v-html="opt.text"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <transition name="fade">
+                            <div v-if="q.selected !== null"
+                                 class="note-card mt-5 border-2 text-base"
+                                 :class="q.options[q.selected].isCorrect ? 'border-green-300 bg-green-50 text-green-900' : 'border-red-300 bg-red-50 text-red-900'">
+                                <p class="font-black text-base mb-2 flex items-center gap-2">
+                                    <span v-if="q.options[q.selected].isCorrect">✅ Phân tích kỹ thuật chính xác</span>
+                                    <span v-else>❌ Lỗi tư duy thực hành</span>
+                                </p>
+                                <p class="readable text-base" v-html="q.options[q.selected].feedback"></p>
+                            </div>
+                        </transition>
+                    </article>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, nextTick, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const tabs = [
+                    '1. Đánh giá phương án',
+                    '2. Sổ tay kỹ sư',
+                    '3. Vận hành & Báo cáo',
+                    '4. Bảo vệ thực hành'
+                ];
+
+                const activeTab = ref(1);
+
+                const toast = ref({
+                    show: false,
+                    message: '',
+                    isError: false
+                });
+
+                let toastTimer = null;
+
+                const showToast = (message, isError = false) => {
+                    clearTimeout(toastTimer);
+                    toast.value = { show: true, message, isError };
+                    toastTimer = setTimeout(() => {
+                        toast.value.show = false;
+                    }, 2500);
+                };
+
+                const triggerMathJax = () => {
+                    nextTick(() => {
+                        const appEl = document.getElementById('app');
+
+                        const runTypeset = () => {
+                            if (window.MathJax && window.MathJax.typesetPromise && appEl) {
+                                try {
+                                    if (window.MathJax.typesetClear) {
+                                        window.MathJax.typesetClear([appEl]);
+                                    }
+                                    window.MathJax.typesetPromise([appEl]).catch((err) => {
+                                        console.warn('MathJax typeset error:', err);
+                                    });
+                                } catch (err) {
+                                    console.warn('MathJax error:', err);
+                                }
+                            }
+                        };
+
+                        if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
+                            window.MathJax.startup.promise.then(runTypeset);
+                        } else {
+                            setTimeout(runTypeset, 100);
+                        }
+                    });
+                };
+
+                const changeTab = (tabIndex) => {
+                    activeTab.value = tabIndex;
+                    triggerMathJax();
+                };
+
+                // TAB 1
+                const trueFallTime = 0.319;
+
+                const manualBallY = ref(20);
+                const manualRunning = ref(false);
+                const manualFinished = ref(false);
+                const manualHitLine = ref(false);
+                const manualTime = ref(0);
+                const manualG = ref(0);
+
+                let manualStartStamp = 0;
+                let manualAnimId = null;
+
+                const manualComment = computed(() => {
+                    if (!manualFinished.value) return '';
+
+                    if (manualTime.value < trueFallTime) {
+                        return 'Bạn bấm quá sớm: bi chưa tới vạch đích, nên g bị tính quá lớn.';
+                    }
+
+                    if (manualTime.value > trueFallTime + 0.12) {
+                        return 'Bạn bấm muộn do phản xạ sinh học trễ, nên g bị tính quá nhỏ.';
+                    }
+
+                    return 'Kết quả có vẻ gần đúng, nhưng vẫn phụ thuộc vào may rủi phản xạ tay người, không đủ độ tin cậy cho phòng Lab.';
+                });
+
+                const startManualDrop = () => {
+                    cancelAnimationFrame(manualAnimId);
+
+                    manualRunning.value = true;
+                    manualFinished.value = false;
+                    manualHitLine.value = false;
+                    manualTime.value = 0;
+                    manualG.value = 0;
+                    manualBallY.value = 20;
+                    manualStartStamp = performance.now();
+
+                    const animate = () => {
+                        const elapsed = (performance.now() - manualStartStamp) / 1000;
+                        const progress = Math.min(elapsed / trueFallTime, 1);
+
+                        manualBallY.value = 20 + 134 * progress * progress;
+
+                        if (progress >= 1) {
+                            manualHitLine.value = true;
+                        }
+
+                        if (manualRunning.value) {
+                            manualAnimId = requestAnimationFrame(animate);
+                        }
+                    };
+
+                    manualAnimId = requestAnimationFrame(animate);
+                };
+
+                const stopManualDrop = () => {
+                    if (!manualRunning.value) return;
+
+                    manualRunning.value = false;
+                    cancelAnimationFrame(manualAnimId);
+
+                    const t = Math.max((performance.now() - manualStartStamp) / 1000, 0.001);
+
+                    manualTime.value = t;
+                    manualG.value = (2 * 0.5) / (t * t);
+                    manualFinished.value = true;
+
+                    triggerMathJax();
+                };
+
+                const resetManual = () => {
+                    cancelAnimationFrame(manualAnimId);
+
+                    manualBallY.value = 20;
+                    manualRunning.value = false;
+                    manualFinished.value = false;
+                    manualHitLine.value = false;
+                    manualTime.value = 0;
+                    manualG.value = 0;
+                };
+
+                const autoBallY = ref(20);
+                const autoRunning = ref(false);
+                const autoFinished = ref(false);
+
+                let autoAnimId = null;
+
+                const startAutoDrop = () => {
+                    cancelAnimationFrame(autoAnimId);
+
+                    autoRunning.value = true;
+                    autoFinished.value = false;
+                    autoBallY.value = 20;
+
+                    let startStamp = null;
+
+                    const animate = (timestamp) => {
+                        if (startStamp === null) {
+                            startStamp = timestamp;
+                        }
+
+                        const progress = Math.min((timestamp - startStamp) / 319, 1);
+
+                        autoBallY.value = 20 + 134 * progress * progress;
+
+                        if (progress < 1) {
+                            autoAnimId = requestAnimationFrame(animate);
+                        } else {
+                            autoRunning.value = false;
+                            autoFinished.value = true;
+                            triggerMathJax();
+                        }
+                    };
+
+                    autoAnimId = requestAnimationFrame(animate);
+                };
+
+                const resetAuto = () => {
+                    cancelAnimationFrame(autoAnimId);
+
+                    autoBallY.value = 20;
+                    autoRunning.value = false;
+                    autoFinished.value = false;
+                };
+
+                // TAB 3
+                const poleAngle = ref(5);
+                const simState = ref('calibrating');
+                const isDropping = ref(false);
+                const simBallY = ref(54);
+                const simBallX = ref(130);
+                const ballCrash = ref(false);
+                const measurements = ref([]);
+                const reportStep = ref(0);
+
+                const measurementCount = computed(() => measurements.value.length);
+
+                const mockData = [0.318, 0.321, 0.318];
+
+                let simAnimId = null;
+                let reportTimers = [];
+
+                const clearReportTimers = () => {
+                    reportTimers.forEach((timer) => clearTimeout(timer));
+                    reportTimers = [];
+                };
+
+                const startReportAnimation = () => {
+                    clearReportTimers();
+
+                    reportStep.value = 1;
+
+                    [2, 3, 4].forEach((step, index) => {
+                        reportTimers.push(setTimeout(() => {
+                            reportStep.value = step;
+                            triggerMathJax();
+                        }, (index + 1) * 1000));
+                    });
+                };
+
+                const confirmCalibration = () => {
+                    if (poleAngle.value !== 0) {
+                        showToast('Chưa đạt: Cần kéo thanh trượt góc lệch về đúng <strong>0°</strong> để trục giá song song với dây dọi.', true);
+                        return;
+                    }
+
+                    simState.value = 'measuring';
+                    showToast('Cân bằng thành công! Có thể tiến hành bấm nút Thả bi để lấy số liệu.');
+                };
+
+                const displayMeasurement = (index) => {
+                    return measurements.value[index] === undefined ? '...' : measurements.value[index].toFixed(3);
+                };
+
+                const sValue = 0.5;
+                const deltaS = 0.001;
+
+                const tAvg = computed(() => {
+                    if (measurements.value.length === 0) return 0;
+                    return measurements.value.reduce((sum, value) => sum + value, 0) / measurements.value.length;
+                });
+
+                const randomError = computed(() => {
+                    if (measurements.value.length < 3) return 0;
+                    return Math.max(...measurements.value.map((value) => Math.abs(value - tAvg.value)));
+                });
+
+                const deltaT = computed(() => randomError.value + 0.001);
+
+                const gAvg = computed(() => {
+                    return tAvg.value > 0 ? (2 * sValue) / (tAvg.value * tAvg.value) : 0;
+                });
+
+                const deltaG = computed(() => {
+                    if (tAvg.value <= 0) return 0;
+                    return gAvg.value * (deltaS / sValue + 2 * deltaT.value / tAvg.value);
+                });
+
+                const tAvgText = computed(() => tAvg.value.toFixed(3));
+                const randomErrorText = computed(() => randomError.value.toFixed(3));
+                const deltaTText = computed(() => deltaT.value.toFixed(3));
+                const gAvgText = computed(() => gAvg.value.toFixed(2));
+                const deltaGText = computed(() => deltaG.value.toFixed(2));
+
+                const dropSimBall = () => {
+                    if (isDropping.value || measurementCount.value >= 3) return;
+
+                    if (simState.value === 'calibrating' && poleAngle.value === 0) {
+                        showToast('Góc đã bằng 0°. Hãy bấm nút <strong>XÁC NHẬN ĐÃ CÂN BẰNG</strong> trước khi tiến hành đo.', true);
+                        return;
+                    }
+
+                    cancelAnimationFrame(simAnimId);
+
+                    isDropping.value = true;
+                    ballCrash.value = false;
+                    simBallY.value = 54;
+                    simBallX.value = 130;
+
+                    let startStamp = null;
+                    const visualDuration = 850;
+                    const angleAtDrop = poleAngle.value;
+                    const willCrash = angleAtDrop !== 0;
+
+                    const animate = (timestamp) => {
+                        if (startStamp === null) {
+                            startStamp = timestamp;
+                        }
+
+                        const progress = Math.min((timestamp - startStamp) / visualDuration, 1);
+
+                        simBallY.value = 54 + 210 * progress * progress;
+
+                        if (willCrash) {
+                            simBallX.value = 130 + angleAtDrop * progress * 1.8;
+                        } else {
+                            simBallX.value = 130;
+                        }
+
+                        if (willCrash && progress >= 0.68) {
+                            isDropping.value = false;
+                            ballCrash.value = true;
+
+                            showToast('Sự cố thực hành: Bi đâm vào thành cổng quang điện vì giá đỡ đang bị nghiêng!', true);
+
+                            setTimeout(() => {
+                                ballCrash.value = false;
+                                simBallY.value = 54;
+                                simBallX.value = 130;
+                            }, 2000);
+
+                            return;
+                        }
+
+                        if (progress < 1) {
+                            simAnimId = requestAnimationFrame(animate);
+                        } else {
+                            isDropping.value = false;
+                            simBallY.value = 54;
+                            simBallX.value = 130;
+
+                            measurements.value.push(mockData[measurementCount.value]);
+
+                            showToast(`Đã ghi nhận dữ liệu lần đo ${measurementCount.value}: t = ${measurements.value[measurementCount.value - 1].toFixed(3)} s`);
+
+                            if (measurementCount.value === 3) {
+                                simState.value = 'done';
+                                startReportAnimation();
+                            }
+
+                            triggerMathJax();
+                        }
+                    };
+
+                    simAnimId = requestAnimationFrame(animate);
+                };
+
+                const resetSimulation = () => {
+                    cancelAnimationFrame(simAnimId);
+                    clearReportTimers();
+
+                    poleAngle.value = 5;
+                    simState.value = 'calibrating';
+                    isDropping.value = false;
+                    simBallY.value = 54;
+                    simBallX.value = 130;
+                    ballCrash.value = false;
+                    measurements.value = [];
+                    reportStep.value = 0;
+
+                    showToast('Đã khôi phục toàn bộ thí nghiệm. Giá đỡ đang ở trạng thái bị lệch 5°.');
+                    triggerMathJax();
+                };
+
+                // TAB 4
+                const questions = ref([
+                    {
+                        id: 1,
+                        text: 'Nếu trong khi thiết kế, học sinh gắn cổng quang điện E1 cách xa nam châm điện một khoảng $2\\,cm$ (thay vì đặt sát ngay dưới viên bi), kết quả đo gia tốc $g$ sẽ ra sao?',
+                        selected: null,
+                        options: [
+                            {
+                                text: 'Kết quả không bị ảnh hưởng vì thiết bị vẫn tự động đo thời gian $t$ trên quãng đường $s$ giữa E1 và E2.',
+                                isCorrect: false,
+                                feedback: 'Sai bản chất phương trình. Công thức xử lý báo cáo được lập luận dựa trên mốc vận tốc đầu bằng 0.'
+                            },
+                            {
+                                text: 'Gia tốc tính ra sẽ sai lệch hoàn toàn. Vì khi rớt đến cổng E1, viên bi đã có vận tốc $v_1 > 0$, do đó công thức $s = \\frac{1}{2}gt^2$ không còn được áp dụng.',
+                                isCorrect: true,
+                                feedback: 'Chính xác! Khi E1 đặt cách xa nam châm, viên bi đã rơi tự do một đoạn. Lúc đi ngang E1, nó mang vận tốc $v_1 > 0$. Khởi tạo phương trình đúng lúc này phải là $s = v_1 t + 0.5 g t^2$.'
+                            },
+                            {
+                                text: 'Đo được kết quả chính xác hơn do loại bỏ được nhiễu loạn của từ trường nam châm lên cổng quang.',
+                                isCorrect: false,
+                                feedback: 'Sai. Đây là ngụy biện thực hành. Yếu tố vật lý quan trọng nhất là bảo đảm $v_0 = 0$ tại mốc đo.'
+                            },
+                            {
+                                text: 'Đồng hồ hiện số MC963 chắc chắn sẽ báo lỗi và không nhảy số.',
+                                isCorrect: false,
+                                feedback: 'Sai. Cổng quang vẫn nhận dạng ngắt tia hồng ngoại bình thường, nó không biết bạn đặt nó ở đâu.'
+                            }
+                        ]
+                    },
+                    {
+                        id: 2,
+                        text: 'Đâu là lập luận khoa học chính xác nhất giải thích lí do ta phải dùng cổng quang điện và đồng hồ hiện số MC963 thay vì dùng đồng hồ bấm giây thủ công?',
+                        selected: null,
+                        options: [
+                            {
+                                text: 'Vì bộ thiết bị MC963 được lập trình sẵn để tự tính luôn gia tốc rơi tự do $g$ và hiển thị lên màn hình.',
+                                isCorrect: false,
+                                feedback: 'Sai tính năng thiết bị. Đồng hồ chỉ đo thời gian $t$, học sinh vẫn phải lấy máy tính tự tính $g$.'
+                            },
+                            {
+                                text: 'Để khử hoàn toàn sai số thô do thời gian phản xạ sinh học thần kinh của con người gây ra.',
+                                isCorrect: true,
+                                feedback: 'Tuyệt đối chính xác! Phản xạ bấm tay của con người mất khoảng $0.2\\,s$. Trong khi viên bi rơi nửa mét chỉ tốn $0.319\\,s$. Dùng tay sẽ sinh ra sai số vô cùng lớn phá hỏng bài Lab.'
+                            },
+                            {
+                                text: 'Vì bộ thiết bị tự động có khả năng tạo ra một lực đẩy phụ giúp viên bi rơi thẳng đứng hơn.',
+                                isCorrect: false,
+                                feedback: 'Sai. Sự rơi tự do yêu cầu chỉ có trọng lực tác dụng, tuyệt đối không có lực đẩy nào.'
+                            },
+                            {
+                                text: 'Vì các phòng thí nghiệm hiện đại yêu cầu thiết bị điện tử thay vì thiết bị cơ học.',
+                                isCorrect: false,
+                                feedback: 'Lý do này không phản ánh bản chất vật lí của phép đo thời gian nhanh.'
+                            }
+                        ]
+                    },
+                    {
+                        id: 3,
+                        text: 'Sau khi bấm công tắc ngắt điện, viên bi đã rơi và chạm đệm hãm, nhưng đồng hồ MC963 trên bàn vẫn hiển thị số 0.000 không đổi. Lỗi kỹ thuật nào sau đây <strong>KHÔNG THỂ</strong> là nguyên nhân?',
+                        selected: null,
+                        options: [
+                            {
+                                text: 'Viên bi rơi lệch góc, không cắt ngang qua các tia hồng ngoại bên trong cổng quang điện.',
+                                isCorrect: false,
+                                feedback: 'Đây là lỗi phổ biến nhất. Xảy ra khi chưa cân chỉnh giá đỡ bằng dây dọi.'
+                            },
+                            {
+                                text: 'Người dùng cắm nhầm jack dây tín hiệu Start/Stop của hai cổng quang trên mặt đồng hồ.',
+                                isCorrect: false,
+                                feedback: 'Cắm ngược dây làm đồng hồ nhận tín hiệu kết thúc trước tín hiệu bắt đầu, dẫn đến không chạy.'
+                            },
+                            {
+                                text: 'Đồng hồ MC963 chưa được vặn núm xoay về đúng chế độ đo thời gian A-B.',
+                                isCorrect: false,
+                                feedback: 'Sai chế độ (Mode) là một lỗi thiết lập thiết bị rất hay gặp.'
+                            },
+                            {
+                                text: 'Do nam châm điện có lực hút từ tính quá mạnh, giữ chặt viên bi.',
+                                isCorrect: true,
+                                feedback: 'Chính xác! Đề bài đã cho dữ kiện "viên bi ĐÃ RƠI chạm đệm". Nghĩa là nam châm đã nhả bi thành công, nguyên nhân không thể do lực hút nam châm được.'
+                            }
+                        ]
+                    },
+                    {
+                        id: 4,
+                        text: 'Trong quy trình xử lý số liệu, nếu sử dụng thước có vạch chia milimet dán cố định trên cột giá đỡ để đo khoảng cách $s = 0{,}500\\,m$, sai số dụng cụ $\\Delta s$ thường được quy ước lấy bằng bao nhiêu?',
+                        selected: null,
+                        options: [
+                            {
+                                text: '$0{,}1\\,mm$, tương đương một phần mười vạch chia.',
+                                isCorrect: false,
+                                feedback: 'Sai. Mắt người bình thường không thể ước lượng chính xác đến một phần mười khoảng cách $1\\,mm$ trên thước.'
+                            },
+                            {
+                                text: '$1\\,mm$ (tức $0{,}001\\,m$), tương đương một độ chia nhỏ nhất của thước.',
+                                isCorrect: true,
+                                feedback: 'Chuẩn xác. Trong phòng thí nghiệm trường phổ thông, khi dùng thước kẻ chia đến milimet, sai số dụng cụ thông thường được lấy bằng 1 độ chia nhỏ nhất (hoặc nửa độ chia nhỏ nhất tuỳ sách giáo khoa quy định).'
+                            },
+                            {
+                                text: '$0\\,mm$, vì khoảng cách đã được in dán cố định từ nhà máy sản xuất thiết bị.',
+                                isCorrect: false,
+                                feedback: 'Sai nguyên tắc đo lường. Mọi dụng cụ đo trong vũ trụ đều tồn tại giới hạn độ phân giải và sai số.'
+                            },
+                            {
+                                text: '$5\\,cm$, để đề phòng sự co giãn vì nhiệt của vật liệu thép.',
+                                isCorrect: false,
+                                feedback: 'Ảnh hưởng nhiệt của inox trong điều kiện phòng học sinh ra biến dạng vô cùng bé, không đạt đến mức cen-ti-mét.'
+                            }
+                        ]
+                    }
+                ]);
+
+                const selectOption = (qId, optIndex) => {
+                    const question = questions.value.find((item) => item.id === qId);
+                    if (!question) return;
+
+                    question.selected = optIndex;
+                    triggerMathJax();
+                };
+
+                const getLetterClass = (question, optionIndex) => {
+                    if (question.selected === null) return 'bg-slate-200 text-slate-700';
+                    if (question.options[optionIndex].isCorrect) return 'bg-green-200 text-green-900';
+                    if (question.selected === optionIndex) return 'bg-red-200 text-red-900';
+                    return 'bg-slate-100 text-slate-400';
+                };
+
+                const getOptionClass = (question, optionIndex) => {
+                    if (question.selected === null) {
+                        return 'border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50 hover:shadow-md';
+                    }
+
+                    if (question.options[optionIndex].isCorrect) {
+                        return 'border-green-500 bg-green-50 shadow-md';
+                    }
+
+                    if (question.selected === optionIndex) {
+                        return 'border-red-400 bg-red-50 shadow-md';
+                    }
+
+                    return 'border-slate-100 bg-slate-50 opacity-60';
+                };
+
+                const resetQuiz = () => {
+                    questions.value.forEach((question) => {
+                        question.selected = null;
+                    });
+
+                    showToast('Đã làm mới toàn bộ câu hỏi trắc nghiệm.');
+                    triggerMathJax();
+                };
+
+                onMounted(() => {
+                    triggerMathJax();
+                });
+
+                return {
+                    tabs,
+                    activeTab,
+                    changeTab,
+                    toast,
+
+                    manualBallY,
+                    manualRunning,
+                    manualFinished,
+                    manualHitLine,
+                    manualTime,
+                    manualG,
+                    manualComment,
+                    startManualDrop,
+                    stopManualDrop,
+                    resetManual,
+
+                    autoBallY,
+                    autoRunning,
+                    autoFinished,
+                    startAutoDrop,
+                    resetAuto,
+
+                    poleAngle,
+                    simState,
+                    isDropping,
+                    simBallY,
+                    simBallX,
+                    ballCrash,
+                    measurements,
+                    measurementCount,
+                    reportStep,
+                    confirmCalibration,
+                    dropSimBall,
+                    resetSimulation,
+                    displayMeasurement,
+                    tAvgText,
+                    randomErrorText,
+                    deltaTText,
+                    gAvgText,
+                    deltaGText,
+
+                    questions,
+                    selectOption,
+                    getLetterClass,
+                    getOptionClass,
+                    resetQuiz
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
